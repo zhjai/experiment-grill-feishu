@@ -4,7 +4,7 @@
 
 | Tier | Transport | Channel | You reply by… | Setup | Best when |
 |---|---|---|---|---|---|
-| **1** | **Delegate to Hermes** | any (Feishu / Signal / Telegram / SMS…) | replying in your normal chat | run Hermes + `hermes mcp serve` | the run is under [Hermes](https://hermes-agent.nousresearch.com/) |
+| **1** | **Delegate to your harness** | any (Feishu / Signal / Telegram / SMS…) | replying in your normal chat | native under OpenClaw/Hermes, or `hermes mcp serve` | the run is under [OpenClaw](https://www.openclaw.ai/) or [Hermes](https://hermes-agent.nousresearch.com/) |
 | **2** | **larksuite/cli** | Feishu / Lark | replying in Feishu | install the CLI + `auth login` | standalone, you use Feishu |
 | **3** | **webhook + file inbox** | Feishu (send) / local file (reply) | editing `feedback_inbox.md` | a webhook/token | quick trial, no bot |
 
@@ -12,15 +12,23 @@
 
 ---
 
-## Tier 1 — delegate to Hermes (preferred *if you already run Hermes*, channel-agnostic)
+## Tier 1 — delegate to your harness (OpenClaw or Hermes, channel-agnostic)
 
-If your run is orchestrated by [Hermes](https://hermes-agent.nousresearch.com/), **don't build any Feishu integration in this repo** — Hermes already runs a multi-channel gateway (Feishu, Signal, Telegram, Slack, SMS, email, QQ…) and exposes it to external agents over MCP. You delegate the whole "ask + wait" to it. (If you're *not* under Hermes, use Tier 2.)
+If your run is orchestrated by an agent harness that already has a chat with you ([OpenClaw](https://www.openclaw.ai/) or [Hermes](https://hermes-agent.nousresearch.com/)), **don't build any Feishu integration in this repo** — the harness owns delivery, the allowlist, and reconnection, and it routes your reply back. There are two ways to delegate:
 
-Start the bridge:
+### 1a. Native — the grill runs *inside* the harness (OpenClaw or Hermes)
+
+The simplest path, and the recommended one when you're already running under a harness. Just **send the question as a normal assistant message**; the harness delivers it over whatever channel you've configured (Feishu, Signal, Telegram…) and feeds your chat reply back into the run's next turn. Nothing to set up here — OpenClaw's Feishu plugin and Hermes's gateway are both fully bidirectional.
+
+### 1b. External — a standalone grill talks to a running **Hermes** gateway over MCP
+
+If the grill runs as a separate process (not inside the harness), Hermes exposes its gateway to external agents:
 
 ```bash
 hermes mcp serve     # stdio MCP server
 ```
+
+> OpenClaw has **no equivalent external await-reply API** — it only exports outbound send functions. So with OpenClaw, run **natively** (1a) or take the reply via Tier 2/3. Only Hermes supports this external-MCP case.
 
 Then drive these MCP tools (signatures verified from `mcp_serve.py`):
 
@@ -49,7 +57,7 @@ Caveats worth knowing:
 - **`permissions_*` is a different channel.** Hermes also exposes `permissions_list_open` / `permissions_respond`, but those answer the harness's *tool-approval* prompts (allow/deny), and in this MCP build they're bridge-local — **not** a free-form "ask the human" path. Route questions through `messages_send` + `events_wait`, not `permissions_*`.
 - **Not literally zero setup.** No Feishu app/scopes/tokens *in this repo*, but **Hermes itself must already be configured** with the target channel and you need a known `target` / `session_key`. The win is that Hermes owns delivery, the allowlist, signature handling, and reconnection.
 
-> **OpenClaw note:** OpenClaw's Feishu extension is **send-only** for external callers (`sendMessageFeishu`, `sendCardFeishu`, …) — it has no external await-reply/approval API, so you can *notify* through it but must take the **reply** via Tier 2 or Tier 3. See OpenClaw's Feishu docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+> **OpenClaw recap:** run **natively** (1a) and OpenClaw routes replies back for you — its Feishu plugin is fully bidirectional. The only thing it lacks is an *external* await-reply API for a standalone process (those `sendMessageFeishu`/`sendCardFeishu` exports are outbound-only), so a separate grill process must use Tier 2/3 for the reply. OpenClaw Feishu docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
 
 ---
 

@@ -49,13 +49,13 @@ The skill decides **when** to ask a human; the transport decides **how** to reac
 
 | Tier | Transport | Channel | You reply by… | Best when |
 |---|---|---|---|---|
-| **1** | **Delegate to Hermes** *(prefer if already under Hermes)* | any (Feishu / Signal / Telegram / SMS…) | replying in your normal chat | the run is under [Hermes](https://hermes-agent.nousresearch.com/) |
+| **1** | **Delegate to your harness** *(prefer if already under one)* | any (Feishu / Signal / Telegram / SMS…) | replying in your normal chat | the run is under [OpenClaw](https://www.openclaw.ai/) or [Hermes](https://hermes-agent.nousresearch.com/) |
 | **2** | **[larksuite/cli](https://github.com/larksuite/cli)** | Feishu / Lark | replying in Feishu | standalone, you use Feishu |
 | **3** | webhook + file inbox | Feishu / local file | editing `feedback_inbox.md` | quick trial, no bot |
 
-**Tier 1 is channel-agnostic and needs no Feishu setup in this repo** — Hermes already runs a multi-channel gateway and exposes it via `hermes mcp serve` (`messages_send` + `events_wait`), so you answer wherever you already chat with the bot, whether or not that's Feishu. (Hermes itself must already have that channel configured.) **Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it hands the reply back through the same file inbox as Tier 3.
+**Tier 1 is channel-agnostic and needs no Feishu setup in this repo.** If the grill runs **inside** OpenClaw or Hermes, just ask the question as a normal message — the harness delivers it over whatever channel you've configured and routes your reply back. (For a *standalone* grill, Hermes also exposes `hermes mcp serve` with `messages_send` + `events_wait`; OpenClaw has no external await-reply API, so use Tier 2/3 for the reply there.) **Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it relays the reply through the same file inbox as Tier 3.
 
-> OpenClaw can *send* to Feishu but exposes no external await-reply API, so under OpenClaw take the **reply** via Tier 2/3. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+> Running **natively** under OpenClaw, replies route back for you (its Feishu plugin is bidirectional). OpenClaw only lacks an *external* await-reply API, so a *standalone* grill under OpenClaw takes the reply via Tier 2/3. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
 
 Full setup for every tier is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)**.
 
