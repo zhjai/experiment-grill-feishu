@@ -67,7 +67,7 @@ Full setup for every tier is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)
 
 ### It remembers your choice
 
-On **first use in a project** the skill asks once (which transport tier, where to reach you) and writes `state/experiment-grill-feishu/config.yaml` — later runs reuse it, no re-choosing. Edit it any time; see [`examples/config.example.yaml`](examples/config.example.yaml). **Secrets are not stored** there — tokens stay in env vars. Precedence: **env var > `config.yaml` > default.**
+On **first use** the skill asks once (which transport tier, where to reach you) and writes a config — later runs reuse it, no re-choosing. It resolves **project first, then user**: `state/experiment-grill-feishu/config.yaml` (project-scoped, relative to where you run the agent) takes precedence over `~/.config/experiment-grill-feishu/config.yaml` (cross-project default). Edit either any time; see [`examples/config.example.yaml`](examples/config.example.yaml). **Secrets are not stored** there — tokens stay in env vars. Precedence: **env var > project config > user config > default.**
 
 ## Usage
 

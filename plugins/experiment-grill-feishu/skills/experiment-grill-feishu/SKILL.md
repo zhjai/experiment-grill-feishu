@@ -24,9 +24,17 @@ This combines:
 
 ## Initialization (first use in a project) — soft init
 
-On **first use in a project**, check whether `state/experiment-grill-feishu/config.yaml` exists. If it does, **read it and reuse the saved settings** — don't re-ask. If it doesn't, ask the user briefly, then write it (so every later run remembers the choice).
+On **first use**, resolve the config in this order — **project first, then user, then ask**:
 
-> **Where:** `state/experiment-grill-feishu/config.yaml` is **relative to the project working directory** (your repo root / wherever you launch the run — the same place `.agent_runs/` is created), *not* the skill's install directory. It's project-scoped on purpose, so different projects keep different transports/targets. The `state/` dir should be gitignored (it holds workspace identifiers).
+1. **Project:** `state/experiment-grill-feishu/config.yaml` (relative to the project working dir). If present, use it.
+2. **User-level fallback:** `~/.config/experiment-grill-feishu/config.yaml`. If no project config but this exists, use it (shared defaults across all your projects).
+3. **Neither:** run the soft init below, then write a **project** config by default. (If the user says "use this everywhere", write the user-level file instead.)
+
+Full precedence: **env var > project config > user config > built-in default.**
+
+> **Where:** the **project** file `state/experiment-grill-feishu/config.yaml` is **relative to the project working directory** (your repo root / wherever you launch the run — the same place `.agent_runs/` is created), *not* the skill's install directory. It's project-scoped so different projects can use different transports/targets; the **user** file at `~/.config/experiment-grill-feishu/config.yaml` is the cross-project default. The project `state/` dir should be gitignored (it holds workspace identifiers).
+
+When the config exists (project or user), **read it and reuse the saved settings — don't re-ask.** Otherwise ask briefly, then write it (so every later run remembers the choice):
 
 1. **Transport** *(always ask — no safe default)*
    "How should I reach you when a decision needs you?

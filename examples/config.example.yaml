@@ -1,7 +1,10 @@
 # experiment-grill-feishu configuration
 # Written on first use (soft init), then reused every run. Project-level, editable any time.
-# Lives at: <project working dir>/state/experiment-grill-feishu/config.yaml
-#   (relative to where you run the agent / where .agent_runs/ is — NOT the skill install dir)
+# Resolution order (project wins, then user, then soft init):
+#   1. <project working dir>/state/experiment-grill-feishu/config.yaml   (project-scoped; gitignored)
+#   2. ~/.config/experiment-grill-feishu/config.yaml                     (cross-project default)
+# Project path is relative to where you run the agent (where .agent_runs/ is) — NOT the skill dir.
+# Full precedence: env var > project config > user config > built-in default.
 #
 # NO SECRETS HERE. Tokens (FEISHU_APP_SECRET, FEISHU_TENANT_ACCESS_TOKEN) stay in env vars.
 # This file still contains workspace identifiers (chat/open IDs), so decide per project whether
