@@ -42,6 +42,15 @@ export FEISHU_TENANT_ACCESS_TOKEN="your_token_here"
 
 Get token: Feishu Open Platform → Create App → Get Tenant Access Token
 
+### Two integration modes — see [`docs/feishu-setup.md`](docs/feishu-setup.md)
+
+| Mode | You reply by… | Public endpoint | Setup |
+|---|---|---|---|
+| **A — webhook + file inbox** | editing `feedback_inbox.md` | none | minimal (the commands above) |
+| **B — bidirectional bot** *(recommended)* | **replying in the Feishu chat** | none (WebSocket long-connection) | create a Feishu app, grant scopes, publish |
+
+Mode B follows how **OpenClaw** and **Hermes** wire Feishu (WebSocket long-connection + `im.message.receive_v1`), so you can answer from your phone with no callback URL. Full step-by-step — app creation, scopes, event subscription, and a minimal `lark_oapi` receive bridge — is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)**.
+
 ## Usage
 
 ### Quick start
@@ -85,6 +94,8 @@ Agent parses `DECISION:` line and applies immediately at next checkpoint.
 
 ## Feishu Message Example
 
+The last line is **Mode A** (reply by editing the file). In **Mode B** that line instead reads "Reply to this message in Feishu".
+
 ```json
 {
   "msg_type": "post",
@@ -97,7 +108,7 @@ Agent parses `DECISION:` line and applies immediately at next checkpoint.
           [{"tag": "text", "text": "Context: ResNet CIFAR-10, batch=64, loss=0.8"}],
           [{"tag": "text", "text": "Options:\nA. 1e-4 (faster)\nB. 5e-5 (safer)"}],
           [{"tag": "text", "text": "Recommended: B\nFallback in 5min: Ask arena"}],
-          [{"tag": "text", "text": "Reply to: .agent_runs/train_001/feedback_inbox.md", "style": ["bold"]}]
+          [{"tag": "text", "text": "Reply (Mode A): .agent_runs/train_001/feedback_inbox.md — or just reply in chat (Mode B)", "style": ["bold"]}]
         ]
       }
     }
@@ -114,15 +125,15 @@ Agent parses `DECISION:` line and applies immediately at next checkpoint.
 
 ## Limitations
 
-- **One-way notification**: Feishu webhook is send-only. User replies via file inbox (not interactive buttons).
-- **File-based feedback**: simple but requires agent to poll. For production, replace with MCP tool or event-driven inbox.
-- **No delivery guarantee**: if Feishu webhook fails, agent won't know (check `feishu-webhook-skill` output).
+- **Mode A is one-way**: a Feishu webhook is send-only, so you reply via the file inbox. **Mode B** ([`docs/feishu-setup.md`](docs/feishu-setup.md)) removes this — a WebSocket long-connection bot reads your chat reply directly.
+- **File-based feedback is polled**: the run checks the inbox at checkpoints (`watch_inbox.sh`), so a reply applies at the next safe checkpoint, not instantly.
+- **No delivery guarantee**: if the send fails, the agent won't know unless it checks the send tool's output. Treat "no reply" as "not delivered or not seen" — the provisional/block fallback already does.
 
 ## Roadmap
 
-- v0.2.0: MCP server for bidirectional Feishu communication (receive replies via bot callback)
-- v0.3.0: Interactive card buttons → direct reply (requires callback webhook)
-- v0.4.0: Decision log analytics (which fallbacks were overridden by user)
+- v0.2.0: ship the Mode B receive bridge as a packaged script (currently documented in `docs/feishu-setup.md`)
+- v0.3.0: interactive card buttons → one-tap reply (subscribe `card.action.trigger`, enable Interactive Card)
+- v0.4.0: decision log analytics (which fallbacks were overridden by the user)
 
 ## Status
 
