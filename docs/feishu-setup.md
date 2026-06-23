@@ -24,9 +24,9 @@ The grill runs **inside the host model's turn** (a subagent / tool call). Just *
 
 Caveat: a single turn can't block for hours. If the reply may be slow (the flagship multi-hour case), you're effectively **detached** — use 1B/1C.
 
-### 1B — Detached + native await (Hermes)
+### 1B — Detached + native await (any harness with a blockable await; Hermes today)
 
-The asker is a **separate long-running process** and the harness exposes a process-blockable await. Hermes does, via `hermes mcp serve`:
+The asker is a **separate long-running process** and the harness exposes a process-blockable await API. Hermes does, via `hermes mcp serve`:
 
 ```bash
 hermes mcp serve     # stdio MCP server
@@ -40,7 +40,7 @@ Then drive these MCP tools (signatures verified from `mcp_serve.py`):
 | `messages_send(target, message)` | send the question |
 | `events_poll(after_cursor, session_key, limit)` | get a starting cursor (`next_cursor`); event types are `message` / `approval_requested` / `approval_resolved` |
 | `events_wait(after_cursor, session_key, timeout_ms=30000)` | block up to `timeout_ms`; returns `{"event": …}` or `{"event": null, "reason": "timeout"}` |
-| `messages_read(session_key, limit)` | fetch full reply text (event payloads are truncated to ~500 chars) |
+| `messages_read(session_key, limit)` | fetch more of the reply (event payloads are truncated to ~500 chars; `messages_read` returns up to ~2000 chars in Hermes 0.13.0) |
 
 ```text
 1. target, session_key = channels_list(...)                  # pick the chat to ask in
@@ -50,7 +50,7 @@ Then drive these MCP tools (signatures verified from `mcp_serve.py`):
      ev = events_wait(after_cursor=cursor, session_key=session_key)
      advance cursor from ev; accept ONLY a `message` event authored by the user —
      skip the bot's own mirrored message and any approval_* events
-5. got a user message → if it may be long, messages_read(session_key) for full text → apply
+5. got a user message → if it may be long, messages_read(session_key) for more text (~2000 chars) → apply
    window expired      → provisional / arena / block fallback (unchanged)
 ```
 
@@ -61,7 +61,7 @@ Caveats for 1B:
 
 ### 1C — Detached + model-mediated mailbox (OpenClaw, or any bidirectional chat without an external await API)
 
-The harness chat is bidirectional but exposes **no process-blockable await API** for an external job (OpenClaw's case — its Feishu exports are outbound-only). You bridge the liveness gap with a durable sink the model writes to:
+The harness chat is bidirectional **in-loop**, but exposes **no inbound await API to an external process** (OpenClaw's case — its Feishu exports are outbound-only). You bridge the liveness gap with a durable sink the model writes to:
 
 1. The detached job writes its pending question to a sink — reuse the Tier 3 `feedback_inbox.md` (or a callback URL / queue) — and polls it.
 2. An **inbound-triggered or heartbeat model turn** posts any unposted questions to the channel, and writes the user's chat reply back into that sink.
@@ -77,7 +77,7 @@ This makes OpenClaw (and similar) usable for detached jobs — but it needs that
 
 When there's no harness to delegate to but you use Feishu, the official **[larksuite/cli](https://github.com/larksuite/cli)** (MIT, "built for humans and AI Agents") gives you both directions without hand-rolling any SDK code:
 
-- **Send:** `lark-cli im +messages-send --chat-id "oc_xxx" --text "..."`
+- **Send:** `lark-cli im +messages-send --chat-id "oc_xxx" --text "..."` (verify the exact subcommand against the CLI's `--help`)
 - **Receive:** the `lark-event` skill — real-time **WebSocket** event subscription with regex routing and agent-friendly output (no public URL needed).
 - **Auth:** `lark-cli auth login` (then `auth status` / `auth scopes` to verify).
 

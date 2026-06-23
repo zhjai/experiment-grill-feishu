@@ -1,6 +1,8 @@
 # experiment-grill-feishu
 
-**Send Feishu notifications for critical experiment decisions, wait asynchronously for user reply, fall back to provisional execution or arena if no reply.**
+**Ask the human about critical experiment decisions over whatever channel you already use, wait asynchronously for the reply, fall back to provisional execution or arena if no reply.**
+
+> The preferred way to reach you is to **delegate to your agent harness** (OpenClaw/Hermes) — channel-agnostic, whether or not that's Feishu. Feishu (via the official CLI or a webhook) is the standalone path. See [transports](#how-it-reaches-you--pick-a-transport-docsfeishu-setupmd).
 
 ## Problem
 
@@ -14,13 +16,13 @@ Blocking and waiting wastes time. Proceeding blindly risks bad decisions.
 
 `experiment-grill-feishu` combines three existing patterns:
 1. **grill-all**: question routing (human / docs / code / web) — only notify for human decisions
-2. **feishu-webhook-skill**: Feishu message delivery
+2. a **transport** to reach you — harness delegation (preferred), larksuite/cli, or a Feishu webhook (see [transports](#how-it-reaches-you--pick-a-transport-docsfeishu-setupmd))
 3. **human-interruptible-unattended-runner**: async fallback protocol
 
 **Flow:**
 1. Agent detects a critical decision
 2. Check if docs/code/web can answer → if yes, use that (don't notify)
-3. If human decision needed → send Feishu, create file inbox, wait 5–15 min
+3. If human decision needed → send the question over your chosen transport, wait 5–15 min
 4. **User replies** → parse feedback, apply correction
 5. **User doesn't reply** → execute provisional fallback:
    - Low-risk: proceed with recommended option (reversible, logged)
@@ -59,7 +61,7 @@ The skill decides **when** to ask a human; the transport decides **how** to reac
 
 **Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it relays the reply through the same file inbox as Tier 3.
 
-> Running **natively** under OpenClaw, replies route back for you (its Feishu plugin is bidirectional). OpenClaw only lacks an *external* await-reply API, so a *standalone* grill under OpenClaw takes the reply via Tier 2/3. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [Lark community wiki](https://larkcommunity.feishu.cn/wiki/LDmXwEVhJitBa5kU0mjc16VKneb) · [plugin guide](https://www.feishu.cn/content/article/7613711414611463386).
+> Running **in-loop** under OpenClaw (a subagent/tool call), replies route back for you — its Feishu chat is bidirectional. A *detached* grill under OpenClaw uses the **1C model-mediated mailbox** (a heartbeat turn writes the chat reply into a file the job polls — a Tier 1/Tier 3 hybrid), since OpenClaw exposes no external await API for a separate process. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [Lark community wiki](https://larkcommunity.feishu.cn/wiki/LDmXwEVhJitBa5kU0mjc16VKneb) · [plugin guide](https://www.feishu.cn/content/article/7613711414611463386).
 
 Full setup for every tier is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)**.
 
@@ -138,12 +140,12 @@ The last line shows the **Tier 3** reply hint (edit the file). With Tier 1/2 it 
 ## Limitations
 
 - **Reply-in-chat needs a transport**: with Tier 3 you reply by editing the file inbox; **Tier 1/2** let you reply right in chat (Tier 2 still relays that into the inbox under the hood). See [`docs/feishu-setup.md`](docs/feishu-setup.md).
-- **Inbox feedback is polled**: Tier 2/3 deliver the reply via `feedback_inbox.md`, which the run checks at checkpoints (`watch_inbox.sh`) — so a reply applies at the next safe checkpoint, not instantly. Tier 1 (Hermes `events_wait`) is the only push path.
+- **Inbox feedback is polled**: Tier 2 / Tier 3 / the 1C mailbox deliver the reply via `feedback_inbox.md`, which the run checks at checkpoints (`watch_inbox.sh`) — so a reply applies at the next safe checkpoint, not instantly. The in-loop path (1A) returns the reply inline; Hermes `events_wait` (1B) is a blocking long-poll the detached job awaits directly.
 - **No delivery guarantee**: if the send fails, the agent won't know unless it checks the send tool's output. Treat "no reply" as "not delivered or not seen" — the provisional/block fallback already does.
 
 ## Roadmap
 
-- v0.2.0: first-class Tier 1 path — call Hermes `messages_send`/`events_wait` directly when running under Hermes
+- v0.2.0: first-class Tier 1 paths — native Hermes await (`messages_send`/`events_wait`) *and* an OpenClaw 1C mailbox helper
 - v0.3.0: interactive card buttons → one-tap reply (subscribe `card.action.trigger`, enable Interactive Card)
 - v0.4.0: decision log analytics (which fallbacks were overridden by the user)
 
