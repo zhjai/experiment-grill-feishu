@@ -78,20 +78,24 @@ The harness chat is bidirectional **in-loop**, but exposes **no inbound await AP
 When there's no harness to delegate to but you use Feishu, the official **[larksuite/cli](https://github.com/larksuite/cli)** (MIT, "built for humans and AI Agents") gives you both directions without hand-rolling any SDK code:
 
 - **Send:** `lark-cli im +messages-send --chat-id "oc_xxx" --text "..."` (verify the exact subcommand against the CLI's `--help`)
-- **Receive:** the `lark-event` skill — real-time **WebSocket** event subscription with regex routing and agent-friendly output (no public URL needed).
+- **Receive — two styles, pick one:**
+  - **Polling** *(simplest; fits the grill's checkpoint model)* — the agent reads recent messages with `lark-cli im` at each checkpoint and looks for your reply. No persistent process; this is what works out of the box without standing anything up.
+  - **Event push** — the `lark-event` skill, a real-time **WebSocket** subscription (regex routing, agent-friendly output, no public URL). Lower latency, but needs a persistent listener process running alongside the job.
 - **Auth:** `lark-cli auth login` (then `auth status` / `auth scopes` to verify).
 
-Install and authenticate per the [repo README](https://github.com/larksuite/cli). Tier 2 still **hands the reply off through the Tier 3 file inbox** — you reply in Feishu, the `lark-event` handler writes it to `feedback_inbox.md`, and the existing `watch_inbox.sh` picks it up. So Tier 2 = "reply in chat" on the front, Tier 3 plumbing on the back.
-
-Point the event subscription at `im.message.receive_v1` and have the handler append a `DECISION:` line (pseudo — see the CLI's `lark-event` docs for the exact route/handler syntax):
+Install and authenticate per the [repo README](https://github.com/larksuite/cli). Either way, Tier 2 **hands the reply off through the Tier 3 file inbox**: when a reply is seen (by the poll loop or the `lark-event` handler), append a `DECISION:` line to `.agent_runs/<run_id>/feedback_inbox.md` and the existing `watch_inbox.sh` picks it up. So Tier 2 = "reply in chat" on the front, Tier 3 plumbing on the back.
 
 ```text
-# pseudo: route im.message.receive_v1 → handler that appends to the active run's inbox
+# Polling (matches the checkpoint cadence):
+at each checkpoint:  lark-cli im <list/read recent messages from your chat>
+                     new user message → append "DECISION: <one-line text>" to feedback_inbox.md
+
+# Or event push (pseudo — see the CLI's lark-event docs for exact route syntax):
 lark-cli lark-event  (subscribe)
-  on im.message.receive_v1:  append "DECISION: <one-line text>" to .agent_runs/<run_id>/feedback_inbox.md
+  on im.message.receive_v1:  append "DECISION: <one-line text>" to feedback_inbox.md
 ```
 
-This is the preferred Feishu transport — it replaces a custom `lark_oapi` bridge with a maintained CLI, so you don't own the WebSocket client, retries, or auth refresh.
+This is the preferred standalone Feishu transport — it replaces a custom `lark_oapi` bridge with a maintained CLI, so you don't own the WebSocket client, retries, or auth refresh. Polling is the path that works without a long-running listener; reach for `lark-event` only if you need lower latency than your checkpoint interval.
 
 ---
 

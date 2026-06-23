@@ -59,7 +59,7 @@ The skill decides **when** to ask a human; the transport decides **how** to reac
 - **In-loop** (the grill is a subagent / tool call): just ask as a normal message; the model relays the reply straight back. Nothing to build, works on **any** harness incl. OpenClaw. (Replying in chat *is* replying to the model.)
 - **Detached** long-running job: Hermes offers a native await (`hermes mcp serve` → `messages_send` + `events_wait`); OpenClaw (no external await API) uses a small model-mediated mailbox — a heartbeat turn writes the chat reply into a file the job polls.
 
-**Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it relays the reply through the same file inbox as Tier 3.
+**Tier 2** uses the official Lark CLI (`im +messages-send` to send; receive by **polling** with `lark-cli im` at checkpoints — the path that works without a standing process — or by the `lark-event` WebSocket if you want lower latency) instead of a hand-rolled bridge; it relays the reply through the same file inbox as Tier 3.
 
 > Running **in-loop** under OpenClaw (a subagent/tool call), replies route back for you — its Feishu chat is bidirectional. A *detached* grill under OpenClaw uses the **1C model-mediated mailbox** (a heartbeat turn writes the chat reply into a file the job polls — a Tier 1/Tier 3 hybrid), since OpenClaw exposes no external await API for a separate process. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [Lark community wiki](https://larkcommunity.feishu.cn/wiki/LDmXwEVhJitBa5kU0mjc16VKneb) · [plugin guide](https://www.feishu.cn/content/article/7613711414611463386).
 
