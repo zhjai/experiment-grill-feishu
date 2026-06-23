@@ -59,7 +59,7 @@ The skill decides **when** to ask a human; the transport decides **how** to reac
 
 **Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it relays the reply through the same file inbox as Tier 3.
 
-> Running **natively** under OpenClaw, replies route back for you (its Feishu plugin is bidirectional). OpenClaw only lacks an *external* await-reply API, so a *standalone* grill under OpenClaw takes the reply via Tier 2/3. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+> Running **natively** under OpenClaw, replies route back for you (its Feishu plugin is bidirectional). OpenClaw only lacks an *external* await-reply API, so a *standalone* grill under OpenClaw takes the reply via Tier 2/3. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [Lark community wiki](https://larkcommunity.feishu.cn/wiki/LDmXwEVhJitBa5kU0mjc16VKneb) · [plugin guide](https://www.feishu.cn/content/article/7613711414611463386).
 
 Full setup for every tier is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)**.
 

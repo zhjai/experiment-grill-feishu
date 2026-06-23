@@ -67,7 +67,7 @@ The harness chat is bidirectional but exposes **no process-blockable await API**
 2. An **inbound-triggered or heartbeat model turn** posts any unposted questions to the channel, and writes the user's chat reply back into that sink.
 3. The job picks the reply up from the sink at its next checkpoint.
 
-This makes OpenClaw (and similar) usable for detached jobs — but it needs that wiring (the model must actually be invoked on reply and have tool access to the sink), so it's a **Tier 1 / Tier 3 hybrid, not "free."** OpenClaw Feishu docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+This makes OpenClaw (and similar) usable for detached jobs — but it needs that wiring (the model must actually be invoked on reply and have tool access to the sink), so it's a **Tier 1 / Tier 3 hybrid, not "free."** OpenClaw Feishu docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [Lark community wiki](https://larkcommunity.feishu.cn/wiki/LDmXwEVhJitBa5kU0mjc16VKneb) · [plugin guide](https://www.feishu.cn/content/article/7613711414611463386).
 
 > **Rule of thumb:** ask in-band and let the model relay (1A); reach for a transport (1B/1C, or Tier 2/3) only when the asker is **detached** from the model's turn loop. The flagship multi-hour case is always detached, so the job owns its own timeout + fallback — *the model is a relay, not a scheduler.*
 
@@ -174,5 +174,5 @@ Feishu app setup for this path: create a self-built app at [open.feishu.cn](http
 The channel-agnostic, delegate-to-the-gateway design follows two production integrations — read their docs for deeper features (streaming cards, group policies, allowlists, media):
 
 - **Hermes Agent** — multi-channel gateway, `hermes mcp serve`, ACP approval flow: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/feishu
-- **OpenClaw** — `@larksuiteoapi/node-sdk`, WebSocket default, streaming interactive cards: https://docs.openclaw.ai/zh-CN/channels/feishu · https://openclaw.feishu.cn/ · [plugin guide w/ one-click bot + bulk scope import](https://www.feishu.cn/content/article/7613711414611463386)
+- **OpenClaw** — `@larksuiteoapi/node-sdk`, WebSocket default, streaming interactive cards: https://docs.openclaw.ai/zh-CN/channels/feishu · [Lark community wiki](https://larkcommunity.feishu.cn/wiki/LDmXwEVhJitBa5kU0mjc16VKneb) · [plugin guide w/ one-click bot + bulk scope import](https://www.feishu.cn/content/article/7613711414611463386)
 - **larksuite/cli** — official Lark CLI, bidirectional (`im`, `lark-event`): https://github.com/larksuite/cli
