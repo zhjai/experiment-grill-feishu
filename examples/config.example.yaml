@@ -15,8 +15,8 @@ transport:
 
   # Only for tier: harness — which harness, and it auto-picks the path:
   #   in-loop (1A) when the grill runs inside the harness turn,
-  #   detached → Hermes native await (1B) or OpenClaw model-mediated mailbox (1C).
-  harness: auto-detect        # openclaw | hermes | auto-detect
+  #   detached → OpenClaw model-mediated mailbox (1C) or Hermes native await (1B).
+  harness: openclaw           # openclaw (default) | hermes | auto-detect
 
 target:
   # Where to send the question. NOT needed for Tier 1A (in-loop — the harness already knows the chat).

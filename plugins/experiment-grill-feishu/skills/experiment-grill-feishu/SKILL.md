@@ -28,7 +28,7 @@ On **first use in a project**, check whether `state/experiment-grill-feishu/conf
 
 1. **Transport** *(always ask — no safe default)*
    "How should I reach you when a decision needs you?
-   - **(1) your agent harness** — if you run under OpenClaw or Hermes; channel-agnostic, no Feishu setup *(`transport.tier: harness`)*
+   - **(1) your agent harness** *(default; `transport.tier: harness`, `harness: openclaw`)* — if you run under OpenClaw (or Hermes); channel-agnostic, no Feishu setup
    - **(2) Feishu via larksuite/cli** — official Lark CLI *(`larksuite`)*
    - **(3) Feishu webhook + file inbox** — simplest *(`webhook`)*"
 
