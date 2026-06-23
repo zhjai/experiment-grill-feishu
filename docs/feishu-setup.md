@@ -147,10 +147,12 @@ lark.ws.Client(os.environ["FEISHU_APP_ID"], os.environ["FEISHU_APP_SECRET"],
 
 Feishu app setup for this path: create a self-built app at [open.feishu.cn](https://open.feishu.cn/), enable **Bot**, grant `im:message` / `im:message:send_as_bot` / `im:chat` (+ `contact:user.id:readonly` to resolve open_ids), set event subscription to **Long Connection (WebSocket)** and subscribe `im.message.receive_v1`, then **publish a version** (scopes don't take effect until published). In a group the bot only receives `@`-mentions — DM it for the simplest loop.
 
+> **Faster bot creation:** Feishu's [OpenClaw plugin guide](https://www.feishu.cn/content/article/7613711414611463386) (Chinese) walks through **one-click QR bot creation** (一键创建飞书机器人) and **bulk permission import** (批量导入权限 from a JSON scope list) — quicker than enabling scopes one by one, even if you only borrow those two steps.
+
 ## Credits
 
 The channel-agnostic, delegate-to-the-gateway design follows two production integrations — read their docs for deeper features (streaming cards, group policies, allowlists, media):
 
 - **Hermes Agent** — multi-channel gateway, `hermes mcp serve`, ACP approval flow: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/feishu
-- **OpenClaw** — `@larksuiteoapi/node-sdk`, WebSocket default, streaming interactive cards: https://docs.openclaw.ai/zh-CN/channels/feishu · https://openclaw.feishu.cn/
+- **OpenClaw** — `@larksuiteoapi/node-sdk`, WebSocket default, streaming interactive cards: https://docs.openclaw.ai/zh-CN/channels/feishu · https://openclaw.feishu.cn/ · [plugin guide w/ one-click bot + bulk scope import](https://www.feishu.cn/content/article/7613711414611463386)
 - **larksuite/cli** — official Lark CLI, bidirectional (`im`, `lark-event`): https://github.com/larksuite/cli
