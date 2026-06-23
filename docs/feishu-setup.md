@@ -85,7 +85,7 @@ When there's no harness to delegate to but you use Feishu, the official **[larks
 
 Install and authenticate per the [repo README](https://github.com/larksuite/cli). Either way, Tier 2 **hands the reply off through the Tier 3 file inbox**: when a reply is seen (by the poll loop or the `lark-event` handler), append a `DECISION:` line to `.agent_runs/<run_id>/feedback_inbox.md` and the existing `watch_inbox.sh` picks it up. So Tier 2 = "reply in chat" on the front, Tier 3 plumbing on the back.
 
-Worked example (the `auth` and `im +messages-send` forms are from the official README; the read/poll uses the raw Feishu IM list endpoint since the README shows no read shortcut — confirm a shorter `lark-cli im` subcommand with `lark-cli im --help`):
+Worked example (verified shortcut forms; for a one-off raw call use `lark-cli api …`):
 
 ```bash
 # 1. Auth once
@@ -99,9 +99,8 @@ lark-cli im +messages-send --as bot --chat-id "oc_xxx" \
 #  lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"open_id"}' \
 #    --data '{"receive_id":"ou_xxx","msg_type":"text","content":"{\"text\":\"...\"}"}'
 
-# 3. Poll for your reply at each checkpoint (newest first), then write it to the inbox
-lark-cli api GET /open-apis/im/v1/messages \
-  --params '{"container_id_type":"chat","container_id":"oc_xxx","sort_type":"ByCreateTimeDesc","page_size":5}'
+# 3. Poll for your reply at each checkpoint, then write it to the inbox
+lark-cli im +chat-messages-list --chat-id "oc_xxx"
 #  → take the newest message authored by YOU (not the bot), collapse to one line, then:
 #    printf 'DECISION: %s\n' "$reply" >> .agent_runs/<run_id>/feedback_inbox.md
 #  watch_inbox.sh then picks it up at the next checkpoint.
