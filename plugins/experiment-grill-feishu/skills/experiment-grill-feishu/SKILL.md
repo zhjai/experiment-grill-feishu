@@ -1,6 +1,6 @@
 ---
 name: experiment-grill-feishu
-description: 'Use when running experiments or long tasks where critical issues or ambiguous decisions need human input. Sends Feishu notification with the question, waits asynchronously via file inbox (user may not reply in time), falls back to provisional execution (self-decision or arena) if no reply, applies user correction if reply arrives. Combines grill-all question routing + human-interruptible-unattended-runner fallback protocol + feishu-webhook-skill notification.'
+description: 'Use when running experiments or long/unattended tasks where a critical or ambiguous decision needs human input but the human may not be watching. Asks the human over a configurable transport — preferring delegation to your agent harness (OpenClaw/Hermes, channel-agnostic), else the official larksuite/cli or a Feishu webhook + file inbox — waits asynchronously, applies the reply if it arrives, and falls back (provisional / agent-arena / block) if it does not. On first use it runs a soft init and remembers the transport, target, timing, and fallback policy in a project config so you do not re-choose each session. Combines grill-all question routing + human-interruptible-unattended-runner fallback protocol.'
 version: 0.1.0
 author: zhjai
 license: MIT
@@ -15,12 +15,30 @@ metadata:
 
 Use this skill when running experiments, training runs, long evaluations, or autonomous coding sessions where critical issues or ambiguous decisions arise that ideally need human input — but the human may not be immediately available.
 
-Core principle: **send Feishu notification, wait asynchronously via file inbox, execute provisional fallback if no reply, apply correction if reply arrives.**
+Core principle: **ask the human over your configured transport, wait asynchronously, execute provisional fallback if no reply, apply correction if reply arrives.**
 
 This combines:
 - **grill-all**: question routing (human / docs / code / web)
 - **human-interruptible-unattended-runner**: async fallback protocol
-- **feishu-webhook-skill**: Feishu message delivery
+- **a transport** to reach the human — harness delegation (preferred), larksuite/cli, or a Feishu webhook (chosen at init; see [`docs/feishu-setup.md`](../../../../docs/feishu-setup.md))
+
+## Initialization (first use in a project) — soft init
+
+On **first use in a project**, check whether `state/experiment-grill-feishu/config.yaml` exists. If it does, **read it and reuse the saved settings** — don't re-ask. If it doesn't, ask the user briefly, then write it (so every later run remembers the choice):
+
+1. **Transport** *(always ask — no safe default)*
+   "How should I reach you when a decision needs you?
+   - **(1) your agent harness** — if you run under OpenClaw or Hermes; channel-agnostic, no Feishu setup *(`transport.tier: harness`)*
+   - **(2) Feishu via larksuite/cli** — official Lark CLI *(`larksuite`)*
+   - **(3) Feishu webhook + file inbox** — simplest *(`webhook`)*"
+
+2. **Target** *(needed unless Tier 1A in-loop, where the harness already knows the chat)*
+   "Where should I send the question — a Feishu chat (`oc_xxx`), a user (`ou_xxx`), or a Hermes target (`feishu:oc_xxx`)? And which open_id(s) may answer?" → `target.type` + `target.id`, `target.allowed_users`. (The allowlist only applies to transports that authenticate the sender — Tier 1B event author, Tier 2, 1C; Tier 3's file inbox has no sender identity and trusts filesystem permissions.)
+
+3. **Timing & fallback** *(don't ask — use defaults, mention they're editable)*
+   Defaults: critical wait 5 min → arena, normal 15 min → provisional, irreversible → block. Tell the user these live in `config.yaml` and can be tuned.
+
+Then write `state/experiment-grill-feishu/config.yaml` from the answers (see [`examples/config.example.yaml`](../../../../examples/config.example.yaml) for the full schema). **Secrets stay in env vars** (`FEISHU_APP_SECRET`, `FEISHU_TENANT_ACCESS_TOKEN`) — never write them into this file. Setup steps per transport are in [`docs/feishu-setup.md`](../../../../docs/feishu-setup.md).
 
 ## When to Use
 
@@ -48,7 +66,7 @@ Before notifying the human:
 4. **Is this a current external fact?** → Search web.
 5. **Is this a human preference or high-stakes decision?** → Continue to step 2.
 
-Only send Feishu notification for **human preference, ambiguous trade-offs, or high-stakes decisions** that docs/code/web cannot resolve.
+Only notify the human for **human preference, ambiguous trade-offs, or high-stakes decisions** that docs/code/web cannot resolve.
 
 ### 2. Prepare the notification
 
@@ -68,16 +86,21 @@ fallback_if_no_reply: <what you'll do in 5 min if no reply>
 reply_to: <file path or method>
 ```
 
-### 3. Send Feishu notification
+### 3. Send the question over the configured transport
 
-Use `feishu-webhook-skill` to send a rich text or card message:
+Send via whatever `transport.tier` resolved to (see Initialization and [`docs/feishu-setup.md`](../../../../docs/feishu-setup.md)):
+- **Tier 1A** (in-loop): just emit the question as your output — the harness relays it.
+- **Tier 1B** (Hermes detached): `messages_send(target, …)`.
+- **Tier 1C** (OpenClaw detached): write the question to the mailbox/inbox the heartbeat turn posts.
+- **Tier 2** (larksuite/cli): `lark-cli im +messages-send …`.
+- **Tier 3** (webhook): `feishu-webhook-skill` (requires `FEISHU_TENANT_ACCESS_TOKEN` in env).
+
+Message shape (any transport):
 - Title: `⚠️ Experiment needs decision: <short summary>`
 - Body: the structured question + options + recommendation + fallback
-- Footer: `Reply to: <file path>` or `Check: <experiment run ID>`
+- Footer: how to reply (in chat for Tier 1/2; `Reply to: <file path>` for Tier 3)
 
-**Important:** Set `FEISHU_TENANT_ACCESS_TOKEN` env var before invoking the skill.
-
-### 4. Create file inbox and wait
+### 4. Create file inbox and wait *(Tier 2 / 3 / 1C — the inbox-relayed transports)*
 
 Create a feedback file:
 ```bash
@@ -248,21 +271,25 @@ Continue reversible work under provisional assumptions if I don't reply.
 
 ## Environment Setup
 
+**Preferences are remembered** in `state/experiment-grill-feishu/config.yaml` (transport tier, target, wait times, fallback) after the first-use soft init — you don't re-choose them each session. **Secrets are not**: tokens stay in env vars and must be set each shell (or via your profile / a sourced `.env`):
+
 ```bash
-# Required: Feishu tenant access token
+# Secrets — env only, never in config.yaml (Tier 3 / webhook path)
 export FEISHU_TENANT_ACCESS_TOKEN="your_token_here"
 
-# Optional: customize wait times
-export EXPERIMENT_GRILL_CRITICAL_WAIT=300     # 5 min for critical
-export EXPERIMENT_GRILL_NORMAL_WAIT=900       # 15 min for normal
+# These specific env vars OVERRIDE config.yaml when set (handy for one-off runs):
+export EXPERIMENT_GRILL_CRITICAL_WAIT=300     # else timing.critical_wait_sec
+export EXPERIMENT_GRILL_NORMAL_WAIT=900       # else timing.normal_wait_sec
+export EXPERIMENT_GRILL_CHECK_INTERVAL=30     # else timing.check_interval_sec
+export FEISHU_ALLOWED_USERS=ou_xxx            # else target.allowed_users
 ```
 
-Get your token from: Feishu Open Platform → Create App → Get Tenant Access Token
+Get your token from: Feishu Open Platform → Create App → Get Tenant Access Token. Precedence applies to the vars above (**env > `config.yaml` > default**); other settings (transport, target, fallback, run_dir) come from `config.yaml` only.
 
 ## Quick Prompt
 
 ```text
-Use experiment-grill-feishu. For critical decisions or ambiguities, send Feishu notification and wait 5 min via file inbox. If I don't reply, use arena for high-stakes decisions or proceed provisionally for low-risk choices. Apply my correction immediately if I reply later.
+Use experiment-grill-feishu. For critical decisions or ambiguities, ask me over my configured transport and wait 5 min. If I don't reply, use arena for high-stakes decisions or proceed provisionally for low-risk choices. Apply my correction immediately if I reply later.
 ```
 
 ## Status

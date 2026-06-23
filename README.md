@@ -65,6 +65,10 @@ The skill decides **when** to ask a human; the transport decides **how** to reac
 
 Full setup for every tier is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)**.
 
+### It remembers your choice
+
+On **first use in a project** the skill asks once (which transport tier, where to reach you) and writes `state/experiment-grill-feishu/config.yaml` — later runs reuse it, no re-choosing. Edit it any time; see [`examples/config.example.yaml`](examples/config.example.yaml). **Secrets are not stored** there — tokens stay in env vars. Precedence: **env var > `config.yaml` > default.**
+
 ## Usage
 
 ### Quick start

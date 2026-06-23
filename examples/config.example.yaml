@@ -1,0 +1,44 @@
+# experiment-grill-feishu configuration
+# Written on first use (soft init), then reused every run. Project-level, editable any time.
+# Lives at: state/experiment-grill-feishu/config.yaml
+#
+# NO SECRETS HERE. Tokens (FEISHU_APP_SECRET, FEISHU_TENANT_ACCESS_TOKEN) stay in env vars.
+# This file still contains workspace identifiers (chat/open IDs), so decide per project whether
+# to commit it — the live state/ dir is gitignored by default; commit examples/config.example.yaml.
+
+transport:
+  # How the grill reaches you. One of:
+  #   harness    - delegate to your agent harness (Tier 1, channel-agnostic; OpenClaw/Hermes)
+  #   larksuite  - Feishu/Lark via the official larksuite/cli (Tier 2)
+  #   webhook    - Feishu webhook + file inbox (Tier 3, simplest fallback)
+  tier: harness
+
+  # Only for tier: harness — which harness, and it auto-picks the path:
+  #   in-loop (1A) when the grill runs inside the harness turn,
+  #   detached → Hermes native await (1B) or OpenClaw model-mediated mailbox (1C).
+  harness: auto-detect        # openclaw | hermes | auto-detect
+
+target:
+  # Where to send the question. NOT needed for Tier 1A (in-loop — the harness already knows the chat).
+  # Needed for Tier 1B (Hermes session), Tier 1C mailbox, Tier 2 (larksuite), Tier 3 (webhook).
+  type: ""                    # chat_id | open_id | hermes   (these formats are NOT interchangeable)
+  id: ""                      # "oc_xxx" (chat_id) · "ou_xxx" (open_id) · "feishu:oc_xxx" (hermes target)
+  # Sender allowlist — only enforceable on transports that authenticate the sender
+  # (Tier 1B event author, Tier 2 lark-event, 1C if it checks open_id). Tier 3's file inbox has
+  # NO sender identity, so there it relies on filesystem permissions, not this list.
+  allowed_users: []           # open_ids; env FEISHU_ALLOWED_USERS overrides this when set
+
+timing:
+  critical_wait_sec: 300      # 5 min  — critical decisions
+  normal_wait_sec: 900        # 15 min — ambiguous config / unexpected results
+  check_interval_sec: 30      # inbox poll cadence (Tier 2/3 and the 1C mailbox)
+
+fallback:
+  # What to do if no reply before the wait expires, by severity:
+  #   arena | provisional | proceed | block
+  critical: arena             # ask agent-arena for an independent call, then provisional
+  normal: provisional         # proceed with the recommended option, logged
+  low_risk: proceed           # just continue, log the assumption
+  irreversible: block         # never auto-proceed on irreversible actions
+
+run_dir: .agent_runs          # per-run inbox / decision-log state lives here
