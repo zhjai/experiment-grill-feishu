@@ -12,23 +12,25 @@
 
 ---
 
-## Tier 1 — delegate to your harness (OpenClaw or Hermes, channel-agnostic)
+## Tier 1 — delegate to your harness (channel-agnostic)
 
-If your run is orchestrated by an agent harness that already has a chat with you ([OpenClaw](https://www.openclaw.ai/) or [Hermes](https://hermes-agent.nousresearch.com/)), **don't build any Feishu integration in this repo** — the harness owns delivery, the allowlist, and reconnection, and it routes your reply back. There are two ways to delegate:
+If your run is under an agent harness that already has a chat with you ([OpenClaw](https://www.openclaw.ai/), [Hermes](https://hermes-agent.nousresearch.com/), or any harness with a channel), **don't build any Feishu integration in this repo** — the harness owns delivery, the allowlist, and reconnection.
 
-### 1a. Native — the grill runs *inside* the harness (OpenClaw or Hermes)
+The one question that decides *how much* you have to wire is **not which harness** — it's: **is the host model holding your resumable continuation when the reply arrives?** That gives three paths.
 
-The simplest path, and the recommended one when you're already running under a harness. Just **send the question as a normal assistant message**; the harness delivers it over whatever channel you've configured (Feishu, Signal, Telegram…) and feeds your chat reply back into the run's next turn. Nothing to set up here — OpenClaw's Feishu plugin and Hermes's gateway are both fully bidirectional.
+### 1A — In-loop (turn-coupled): the asker is a model sub-call
 
-### 1b. External — a standalone grill talks to a running **Hermes** gateway over MCP
+The grill runs **inside the host model's turn** (a subagent / tool call). Just **emit the question as your output**; the host model relays it over its channel, the user replies, and the host model resumes you with the answer. **No transport, no API — works on *any* harness with a channel (OpenClaw, Hermes, a Claude Code subagent…).** This is the cleanest path: replying in chat *is* replying to the model, and the model hands it straight back to you.
 
-If the grill runs as a separate process (not inside the harness), Hermes exposes its gateway to external agents:
+Caveat: a single turn can't block for hours. If the reply may be slow (the flagship multi-hour case), you're effectively **detached** — use 1B/1C.
+
+### 1B — Detached + native await (Hermes)
+
+The asker is a **separate long-running process** and the harness exposes a process-blockable await. Hermes does, via `hermes mcp serve`:
 
 ```bash
 hermes mcp serve     # stdio MCP server
 ```
-
-> OpenClaw has **no equivalent external await-reply API** — it only exports outbound send functions. So with OpenClaw, run **natively** (1a) or take the reply via Tier 2/3. Only Hermes supports this external-MCP case.
 
 Then drive these MCP tools (signatures verified from `mcp_serve.py`):
 
@@ -52,12 +54,22 @@ Then drive these MCP tools (signatures verified from `mcp_serve.py`):
    window expired      → provisional / arena / block fallback (unchanged)
 ```
 
-Caveats worth knowing:
+Caveats for 1B:
 - **Filter the event.** `events_wait` returns the *next* event of any kind — including the bot's own outbound message mirrored back, and `approval_*` events. Take only a user-authored `message`, or you'll "answer" with your own question.
 - **`permissions_*` is a different channel.** Hermes also exposes `permissions_list_open` / `permissions_respond`, but those answer the harness's *tool-approval* prompts (allow/deny), and in this MCP build they're bridge-local — **not** a free-form "ask the human" path. Route questions through `messages_send` + `events_wait`, not `permissions_*`.
-- **Not literally zero setup.** No Feishu app/scopes/tokens *in this repo*, but **Hermes itself must already be configured** with the target channel and you need a known `target` / `session_key`. The win is that Hermes owns delivery, the allowlist, signature handling, and reconnection.
+- **Not literally zero setup.** No Feishu app/scopes/tokens *in this repo*, but Hermes itself must already be configured with the channel, and you need a known `target` / `session_key`.
 
-> **OpenClaw recap:** run **natively** (1a) and OpenClaw routes replies back for you — its Feishu plugin is fully bidirectional. The only thing it lacks is an *external* await-reply API for a standalone process (those `sendMessageFeishu`/`sendCardFeishu` exports are outbound-only), so a separate grill process must use Tier 2/3 for the reply. OpenClaw Feishu docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+### 1C — Detached + model-mediated mailbox (OpenClaw, or any bidirectional chat without an external await API)
+
+The harness chat is bidirectional but exposes **no process-blockable await API** for an external job (OpenClaw's case — its Feishu exports are outbound-only). You bridge the liveness gap with a durable sink the model writes to:
+
+1. The detached job writes its pending question to a sink — reuse the Tier 3 `feedback_inbox.md` (or a callback URL / queue) — and polls it.
+2. An **inbound-triggered or heartbeat model turn** posts any unposted questions to the channel, and writes the user's chat reply back into that sink.
+3. The job picks the reply up from the sink at its next checkpoint.
+
+This makes OpenClaw (and similar) usable for detached jobs — but it needs that wiring (the model must actually be invoked on reply and have tool access to the sink), so it's a **Tier 1 / Tier 3 hybrid, not "free."** OpenClaw Feishu docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+
+> **Rule of thumb:** ask in-band and let the model relay (1A); reach for a transport (1B/1C, or Tier 2/3) only when the asker is **detached** from the model's turn loop. The flagship multi-hour case is always detached, so the job owns its own timeout + fallback — *the model is a relay, not a scheduler.*
 
 ---
 

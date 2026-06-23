@@ -53,7 +53,11 @@ The skill decides **when** to ask a human; the transport decides **how** to reac
 | **2** | **[larksuite/cli](https://github.com/larksuite/cli)** | Feishu / Lark | replying in Feishu | standalone, you use Feishu |
 | **3** | webhook + file inbox | Feishu / local file | editing `feedback_inbox.md` | quick trial, no bot |
 
-**Tier 1 is channel-agnostic and needs no Feishu setup in this repo.** If the grill runs **inside** OpenClaw or Hermes, just ask the question as a normal message — the harness delivers it over whatever channel you've configured and routes your reply back. (For a *standalone* grill, Hermes also exposes `hermes mcp serve` with `messages_send` + `events_wait`; OpenClaw has no external await-reply API, so use Tier 2/3 for the reply there.) **Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it relays the reply through the same file inbox as Tier 3.
+**Tier 1 is channel-agnostic and needs no Feishu setup in this repo.** How much you wire depends on one thing — *is the host model holding your continuation when the reply lands?* — not on which harness:
+- **In-loop** (the grill is a subagent / tool call): just ask as a normal message; the model relays the reply straight back. Nothing to build, works on **any** harness incl. OpenClaw. (Replying in chat *is* replying to the model.)
+- **Detached** long-running job: Hermes offers a native await (`hermes mcp serve` → `messages_send` + `events_wait`); OpenClaw (no external await API) uses a small model-mediated mailbox — a heartbeat turn writes the chat reply into a file the job polls.
+
+**Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it relays the reply through the same file inbox as Tier 3.
 
 > Running **natively** under OpenClaw, replies route back for you (its Feishu plugin is bidirectional). OpenClaw only lacks an *external* await-reply API, so a *standalone* grill under OpenClaw takes the reply via Tier 2/3. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
 
