@@ -30,26 +30,34 @@ Blocking and waiting wastes time. Proceeding blindly risks bad decisions.
 ## Install
 
 ```bash
-# 1. Install dependency
-npx skills add viktorxhzj/feishu-webhook-skill -a claude-code
-
-# 2. Install this skill
 npx skills add zhjai/experiment-grill-feishu -a claude-code
-
-# 3. Set Feishu token
-export FEISHU_TENANT_ACCESS_TOKEN="your_token_here"
 ```
 
-Get token: Feishu Open Platform → Create App → Get Tenant Access Token
+Then pick a **transport** for reaching you (next section). The quick-start below is the **Tier 3** path (webhook + file inbox):
 
-### Two integration modes — see [`docs/feishu-setup.md`](docs/feishu-setup.md)
+```bash
+# Tier 3 only: send via feishu-webhook-skill, reply via a local file
+npx skills add viktorxhzj/feishu-webhook-skill -a claude-code
+export FEISHU_TENANT_ACCESS_TOKEN="your_token_here"   # short-lived (~2h) — refresh for long runs
+```
 
-| Mode | You reply by… | Public endpoint | Setup |
-|---|---|---|---|
-| **A — webhook + file inbox** | editing `feedback_inbox.md` | none | minimal (the commands above) |
-| **B — bidirectional bot** *(recommended)* | **replying in the Feishu chat** | none (WebSocket long-connection) | create a Feishu app, grant scopes, publish |
+Get token: Feishu Open Platform → Create App → Get Tenant Access Token. (Tier 1/2 don't need this — see below.)
 
-Mode B follows how **OpenClaw** and **Hermes** wire Feishu (WebSocket long-connection + `im.message.receive_v1`), so you can answer from your phone with no callback URL. Full step-by-step — app creation, scopes, event subscription, and a minimal `lark_oapi` receive bridge — is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)**.
+### How it reaches you — pick a transport ([`docs/feishu-setup.md`](docs/feishu-setup.md))
+
+The skill decides **when** to ask a human; the transport decides **how** to reach you. Best-to-simplest:
+
+| Tier | Transport | Channel | You reply by… | Best when |
+|---|---|---|---|---|
+| **1** | **Delegate to Hermes** *(prefer if already under Hermes)* | any (Feishu / Signal / Telegram / SMS…) | replying in your normal chat | the run is under [Hermes](https://hermes-agent.nousresearch.com/) |
+| **2** | **[larksuite/cli](https://github.com/larksuite/cli)** | Feishu / Lark | replying in Feishu | standalone, you use Feishu |
+| **3** | webhook + file inbox | Feishu / local file | editing `feedback_inbox.md` | quick trial, no bot |
+
+**Tier 1 is channel-agnostic and needs no Feishu setup in this repo** — Hermes already runs a multi-channel gateway and exposes it via `hermes mcp serve` (`messages_send` + `events_wait`), so you answer wherever you already chat with the bot, whether or not that's Feishu. (Hermes itself must already have that channel configured.) **Tier 2** uses the official Lark CLI (bidirectional: `im +messages-send` to send, `lark-event` WebSocket to receive) instead of a hand-rolled bridge; it hands the reply back through the same file inbox as Tier 3.
+
+> OpenClaw can *send* to Feishu but exposes no external await-reply API, so under OpenClaw take the **reply** via Tier 2/3. Docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+
+Full setup for every tier is in **[`docs/feishu-setup.md`](docs/feishu-setup.md)**.
 
 ## Usage
 
@@ -94,7 +102,7 @@ Agent parses `DECISION:` line and applies immediately at next checkpoint.
 
 ## Feishu Message Example
 
-The last line is **Mode A** (reply by editing the file). In **Mode B** that line instead reads "Reply to this message in Feishu".
+The last line shows the **Tier 3** reply hint (edit the file). With Tier 1/2 it instead reads "Reply to this message" — you answer right in chat.
 
 ```json
 {
@@ -108,7 +116,7 @@ The last line is **Mode A** (reply by editing the file). In **Mode B** that line
           [{"tag": "text", "text": "Context: ResNet CIFAR-10, batch=64, loss=0.8"}],
           [{"tag": "text", "text": "Options:\nA. 1e-4 (faster)\nB. 5e-5 (safer)"}],
           [{"tag": "text", "text": "Recommended: B\nFallback in 5min: Ask arena"}],
-          [{"tag": "text", "text": "Reply (Mode A): .agent_runs/train_001/feedback_inbox.md — or just reply in chat (Mode B)", "style": ["bold"]}]
+          [{"tag": "text", "text": "Reply in chat (Tier 1/2) — or edit .agent_runs/train_001/feedback_inbox.md (Tier 3)", "style": ["bold"]}]
         ]
       }
     }
@@ -125,13 +133,13 @@ The last line is **Mode A** (reply by editing the file). In **Mode B** that line
 
 ## Limitations
 
-- **Mode A is one-way**: a Feishu webhook is send-only, so you reply via the file inbox. **Mode B** ([`docs/feishu-setup.md`](docs/feishu-setup.md)) removes this — a WebSocket long-connection bot reads your chat reply directly.
-- **File-based feedback is polled**: the run checks the inbox at checkpoints (`watch_inbox.sh`), so a reply applies at the next safe checkpoint, not instantly.
+- **Reply-in-chat needs a transport**: with Tier 3 you reply by editing the file inbox; **Tier 1/2** let you reply right in chat (Tier 2 still relays that into the inbox under the hood). See [`docs/feishu-setup.md`](docs/feishu-setup.md).
+- **Inbox feedback is polled**: Tier 2/3 deliver the reply via `feedback_inbox.md`, which the run checks at checkpoints (`watch_inbox.sh`) — so a reply applies at the next safe checkpoint, not instantly. Tier 1 (Hermes `events_wait`) is the only push path.
 - **No delivery guarantee**: if the send fails, the agent won't know unless it checks the send tool's output. Treat "no reply" as "not delivered or not seen" — the provisional/block fallback already does.
 
 ## Roadmap
 
-- v0.2.0: ship the Mode B receive bridge as a packaged script (currently documented in `docs/feishu-setup.md`)
+- v0.2.0: first-class Tier 1 path — call Hermes `messages_send`/`events_wait` directly when running under Hermes
 - v0.3.0: interactive card buttons → one-tap reply (subscribe `card.action.trigger`, enable Interactive Card)
 - v0.4.0: decision log analytics (which fallbacks were overridden by the user)
 

@@ -1,181 +1,156 @@
-# Feishu setup — two integration modes
+# Reaching the human — transport options
 
-`experiment-grill-feishu` needs to do two things over Feishu (飞书 / Lark):
+`experiment-grill-feishu` does two things when a decision comes up: **send** you the question, and **receive** your reply. *How* it reaches you is a separate, swappable transport. Pick the best one available — they go from "delegate everything to a harness that already has a chat with you" down to "edit a local file".
 
-1. **Send** you the question when a decision comes up.
-2. **Receive** your reply (so the run can apply it).
+| Tier | Transport | Channel | You reply by… | Setup | Best when |
+|---|---|---|---|---|---|
+| **1** | **Delegate to Hermes** | any (Feishu / Signal / Telegram / SMS…) | replying in your normal chat | run Hermes + `hermes mcp serve` | the run is under [Hermes](https://hermes-agent.nousresearch.com/) |
+| **2** | **larksuite/cli** | Feishu / Lark | replying in Feishu | install the CLI + `auth login` | standalone, you use Feishu |
+| **3** | **webhook + file inbox** | Feishu (send) / local file (reply) | editing `feedback_inbox.md` | a webhook/token | quick trial, no bot |
 
-There are two ways to wire this, trading setup effort for UX. Pick one.
-
-| | **Mode A — webhook + file inbox** | **Mode B — bidirectional bot** *(recommended)* |
-|---|---|---|
-| Setup effort | Minimal (a webhook URL or tenant token) | Create a Feishu app, grant scopes, publish |
-| You reply by… | **editing a local file** (`feedback_inbox.md`) | **replying in the Feishu chat** |
-| Public endpoint needed | No | No (uses an outbound WebSocket long-connection) |
-| Best for | quick trials, single machine | real unattended runs where you only have your phone |
-
-Mode B is how mature agents wire Feishu — see **OpenClaw** ([docs](https://docs.openclaw.ai/zh-CN/channels/feishu)) and **Hermes** ([docs](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/feishu)). Both default to the **long-connection (WebSocket) event subscription**, which is why neither needs a public callback URL. This tutorial follows the same approach.
+> The skill decides **when** to ask a human; the transport decides **how** to reach them. Prefer Tier 1 — it reuses a gateway you already trust and is channel-agnostic, so it works "whether or not you use Feishu".
 
 ---
 
-## Mode A — webhook + file inbox (quick)
+## Tier 1 — delegate to Hermes (preferred *if you already run Hermes*, channel-agnostic)
 
-The send side uses [`feishu-webhook-skill`](https://github.com/viktorxhzj/feishu-webhook-skill); the reply side is a local file you edit.
+If your run is orchestrated by [Hermes](https://hermes-agent.nousresearch.com/), **don't build any Feishu integration in this repo** — Hermes already runs a multi-channel gateway (Feishu, Signal, Telegram, Slack, SMS, email, QQ…) and exposes it to external agents over MCP. You delegate the whole "ask + wait" to it. (If you're *not* under Hermes, use Tier 2.)
+
+Start the bridge:
+
+```bash
+hermes mcp serve     # stdio MCP server
+```
+
+Then drive these MCP tools (signatures verified from `mcp_serve.py`):
+
+| Tool | Use |
+|---|---|
+| `channels_list(platform)` | find the `target` (`platform:chat_id`, e.g. `feishu:oc_xxx`) and session to talk to |
+| `messages_send(target, message)` | send the question |
+| `events_poll(after_cursor, session_key, limit)` | get a starting cursor (`next_cursor`); event types are `message` / `approval_requested` / `approval_resolved` |
+| `events_wait(after_cursor, session_key, timeout_ms=30000)` | block up to `timeout_ms`; returns `{"event": …}` or `{"event": null, "reason": "timeout"}` |
+| `messages_read(session_key, limit)` | fetch full reply text (event payloads are truncated to ~500 chars) |
+
+```text
+1. target, session_key = channels_list(...)                  # pick the chat to ask in
+2. cursor = events_poll(session_key=session_key).next_cursor # mark "now"
+3. messages_send(target, "⚠️ Loss spiked to 2.3 — reduce LR or stop?")
+4. loop until your decision window (5–15 min):
+     ev = events_wait(after_cursor=cursor, session_key=session_key)
+     advance cursor from ev; accept ONLY a `message` event authored by the user —
+     skip the bot's own mirrored message and any approval_* events
+5. got a user message → if it may be long, messages_read(session_key) for full text → apply
+   window expired      → provisional / arena / block fallback (unchanged)
+```
+
+Caveats worth knowing:
+- **Filter the event.** `events_wait` returns the *next* event of any kind — including the bot's own outbound message mirrored back, and `approval_*` events. Take only a user-authored `message`, or you'll "answer" with your own question.
+- **`permissions_*` is a different channel.** Hermes also exposes `permissions_list_open` / `permissions_respond`, but those answer the harness's *tool-approval* prompts (allow/deny), and in this MCP build they're bridge-local — **not** a free-form "ask the human" path. Route questions through `messages_send` + `events_wait`, not `permissions_*`.
+- **Not literally zero setup.** No Feishu app/scopes/tokens *in this repo*, but **Hermes itself must already be configured** with the target channel and you need a known `target` / `session_key`. The win is that Hermes owns delivery, the allowlist, signature handling, and reconnection.
+
+> **OpenClaw note:** OpenClaw's Feishu extension is **send-only** for external callers (`sendMessageFeishu`, `sendCardFeishu`, …) — it has no external await-reply/approval API, so you can *notify* through it but must take the **reply** via Tier 2 or Tier 3. See OpenClaw's Feishu docs: [docs.openclaw.ai](https://docs.openclaw.ai/zh-CN/channels/feishu) · [openclaw.feishu.cn](https://openclaw.feishu.cn/).
+
+---
+
+## Tier 2 — larksuite/cli (convenient standalone Feishu path)
+
+When there's no harness to delegate to but you use Feishu, the official **[larksuite/cli](https://github.com/larksuite/cli)** (MIT, "built for humans and AI Agents") gives you both directions without hand-rolling any SDK code:
+
+- **Send:** `lark-cli im +messages-send --chat-id "oc_xxx" --text "..."`
+- **Receive:** the `lark-event` skill — real-time **WebSocket** event subscription with regex routing and agent-friendly output (no public URL needed).
+- **Auth:** `lark-cli auth login` (then `auth status` / `auth scopes` to verify).
+
+Install and authenticate per the [repo README](https://github.com/larksuite/cli). Tier 2 still **hands the reply off through the Tier 3 file inbox** — you reply in Feishu, the `lark-event` handler writes it to `feedback_inbox.md`, and the existing `watch_inbox.sh` picks it up. So Tier 2 = "reply in chat" on the front, Tier 3 plumbing on the back.
+
+Point the event subscription at `im.message.receive_v1` and have the handler append a `DECISION:` line (pseudo — see the CLI's `lark-event` docs for the exact route/handler syntax):
+
+```text
+# pseudo: route im.message.receive_v1 → handler that appends to the active run's inbox
+lark-cli lark-event  (subscribe)
+  on im.message.receive_v1:  append "DECISION: <one-line text>" to .agent_runs/<run_id>/feedback_inbox.md
+```
+
+This is the preferred Feishu transport — it replaces a custom `lark_oapi` bridge with a maintained CLI, so you don't own the WebSocket client, retries, or auth refresh.
+
+---
+
+## Tier 3 — webhook + file inbox (zero-dependency fallback)
+
+The send side uses [`feishu-webhook-skill`](https://github.com/viktorxhzj/feishu-webhook-skill); you reply by editing a local file.
 
 ```bash
 npx skills add viktorxhzj/feishu-webhook-skill -a claude-code
 export FEISHU_TENANT_ACCESS_TOKEN="your_token_here"
 ```
 
-> `tenant_access_token` is **short-lived (~2 h)**. For a long unattended run, a fixed exported token will start failing silently mid-experiment — make sure your sender refreshes it from the App ID/Secret (the webhook skill / Mode B app credentials do this for you), rather than pasting a static token.
+> `tenant_access_token` is **short-lived (~2 h)** — for a long unattended run, make sure the sender refreshes it from the App ID/Secret rather than pasting a static token, or it will start failing silently mid-run.
 
-When a decision arises, the skill sends the question to Feishu and creates `.agent_runs/<run_id>/feedback_inbox.md`. You reply by editing that file:
+The skill sends the question and creates `.agent_runs/<run_id>/feedback_inbox.md`. You answer by editing it:
 
 ```markdown
 DECISION: Reduce learning rate to 1e-5
 REASONING: Loss spike suggests LR too high
 ```
 
-`scripts/watch_inbox.sh` polls for the change and raises a flag the run checks at its next checkpoint. Simple, but you must be at a machine with the repo to answer.
+`scripts/watch_inbox.sh` polls for the change and raises a flag the run checks at its next checkpoint. Simple, but you must be at a machine with the repo. **First reply wins** (the watcher reads the first `DECISION:` line).
 
 ---
 
-## Mode B — bidirectional bot (recommended)
+## How transports map to the grill flow
 
-Here the bot **receives your reply right in the Feishu chat**. The send side can stay on `feishu-webhook-skill` (or use the same app's `im.message.create` API); the new piece is a small **receive bridge** that listens over a WebSocket long-connection and writes your reply into the same `feedback_inbox.md` — so the rest of the grill flow is unchanged.
+| Grill step | Tier 1 (Hermes) | Tier 2 (larksuite/cli) | Tier 3 (file inbox) |
+|---|---|---|---|
+| Send question | `messages_send` | `im +messages-send` | `feishu-webhook-skill` |
+| Receive reply | `events_wait` | `lark-event` WS | edit `feedback_inbox.md` |
+| Detect reply | returned by the poll | handler writes inbox → `watch_inbox.sh` | `watch_inbox.sh` |
+| No-reply fallback | unchanged (provisional / arena / block) | unchanged | unchanged |
 
-### 1. Create a self-built app
+Only the transport changes; the fallback honesty (provisional execution, arena escalation, block-on-irreversible) is identical everywhere.
 
-Open the Feishu Open Platform — [open.feishu.cn](https://open.feishu.cn/) (China) or [open.larksuite.com](https://open.larksuite.com/) (international) — and create a **self-built app** (自建应用). Copy the **App ID** (`cli_xxx`) and **App Secret** from **凭证与基础信息 / Credentials & Basic Info**.
+---
 
-### 2. Enable the Bot capability
+## Appendix — DIY `lark_oapi` bridge (lowest level)
 
-Under **应用能力 / Add features → 机器人 / Bot**, enable the bot. (Interactive-card buttons additionally need *Interactive Card* turned on here — optional; plain replies don't.)
-
-### 3. Grant permission scopes
-
-Under **权限管理 / Permissions**, add at minimum:
-
-| Scope | Why |
-|---|---|
-| `im:message` | receive and read messages |
-| `im:message:send_as_bot` | send messages as the bot |
-| `im:chat` / `im:chat:readonly` | read chat / group metadata |
-| `im:resource` | (optional) images, files, audio |
-| `contact:user.id:readonly` | (optional) resolve a replier's `open_id` for the allowlist |
-
-This is a set similar to what OpenClaw and Hermes request (see Credits) — start here and add more only if the console reports a missing scope.
-
-> **Group chats:** in a group, the bot only receives a message when it is **@-mentioned**. For the simplest grill loop, **DM the bot directly** — then every message reaches the bridge.
-
-### 4. Configure event subscription — choose Long Connection
-
-Under **事件订阅 / Event Subscription**:
-
-- Set the delivery mode to **长连接 / Long Connection (WebSocket)**. This is the important choice — with long-connection the bot dials *out*, so **you need no public URL, no reverse proxy, no HTTPS cert**.
-- Subscribe to the event **`im.message.receive_v1`** (接收消息). This is the only event needed to get replies.
-
-> Webhook alternative: if you'd rather run an HTTP server (e.g. you're already behind a reachable endpoint), pick webhook mode instead and set a **Verification Token** (and optional **Encrypt Key**). WebSocket is simpler for unattended runs and is the default in both reference implementations.
-
-### 5. Publish a version
-
-Go to **版本管理与发布 / Version Management & Release** and publish a version. **Scopes and events do not take effect until a version is published and approved** — this is the most common "why isn't it working" cause.
-
-### 6. Set credentials
-
-```bash
-export FEISHU_APP_ID="cli_xxx"
-export FEISHU_APP_SECRET="xxx"
-export FEISHU_DOMAIN="feishu"             # 'feishu' (China) or 'lark' (international)
-# REQUIRED for safety: only these open_ids may steer a run (the bridge fails closed without it)
-export FEISHU_ALLOWED_USERS="ou_xxx"      # your open_id — see below
-```
-
-To find your `open_id`: start the bridge below with an empty allowlist removed, DM the bot once, and the bridge log prints the sender's `open_id` (the bridge below logs rejected senders); or use the Open Platform API explorer. The allowlist is **mandatory** — without it, anyone who can message the bot could write a decision into your live run.
-
-### 7. Run the receive bridge
-
-The bridge is a tiny long-running process built on the official Lark SDK (`lark_oapi`, the same SDK Hermes uses). It subscribes to `im.message.receive_v1` and writes whatever you send into the active run's inbox as a `DECISION:` line:
+Only if you can't use larksuite/cli (Tier 2) and want to embed the receive loop yourself. It's the official Python SDK; the key facts: subscribe to `im.message.receive_v1` over a WebSocket long-connection (no public URL), and **pass the domain** so international Lark users don't hit the China endpoint.
 
 ```python
-# feishu_bridge.py — minimal bidirectional receive bridge (illustrative; adapt before production)
 import os, re, json, glob
 import lark_oapi as lark
 from lark_oapi.core.const import FEISHU_DOMAIN, LARK_DOMAIN
 from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
 
-# Fail closed: only these open_ids may steer a run. Empty allowlist = accept nobody.
 ALLOWED = set(filter(None, os.environ.get("FEISHU_ALLOWED_USERS", "").split(",")))
-if not ALLOWED:
-    raise SystemExit("Set FEISHU_ALLOWED_USERS=<your open_id>. Refusing to accept replies from anyone.")
-
+if not ALLOWED:                                    # fail closed
+    raise SystemExit("Set FEISHU_ALLOWED_USERS=<your open_id>.")
 DOMAIN = LARK_DOMAIN if os.environ.get("FEISHU_DOMAIN", "feishu").lower() == "lark" else FEISHU_DOMAIN
 
-def _awaiting_inbox():
-    # the run still waiting for a reply = an inbox with no feedback_arrived.flag yet.
-    # NOTE: assumes one open decision at a time. For concurrent runs, bind the reply to the
-    # message/chat the question was sent in instead of guessing by mtime.
+def _awaiting_inbox():                              # one open decision at a time
     pending = [p for p in glob.glob(".agent_runs/*/feedback_inbox.md")
                if not os.path.exists(os.path.join(os.path.dirname(p), "feedback_arrived.flag"))]
     return max(pending, key=os.path.getmtime) if pending else None
 
 def on_message(data: P2ImMessageReceiveV1) -> None:
     ev = data.event
-    sender = getattr(getattr(ev, "sender", None), "sender_id", None)
-    open_id = getattr(sender, "open_id", None)
-    if open_id not in ALLOWED:
-        print(f"[bridge] ignored message from open_id={open_id!r} (not in allowlist)")
+    open_id = getattr(getattr(getattr(ev, "sender", None), "sender_id", None), "open_id", None)
+    if open_id not in ALLOWED or ev.message.message_type != "text":
         return
-    if ev.message.message_type != "text":          # post/image/etc. carry no plain text
-        return
-    raw = json.loads(ev.message.content).get("text", "")
-    text = re.sub(r"\s+", " ", raw).strip()         # collapse to one line — blocks DECISION:/REASONING: injection
+    text = re.sub(r"\s+", " ", json.loads(ev.message.content).get("text", "")).strip()  # one line, no injection
     inbox = _awaiting_inbox()
-    if not text or not inbox:
-        return
-    with open(inbox, "a") as f:
-        f.write(f"\nDECISION: {text}\n")
-    print(f"[bridge] {inbox} <- {text!r}")
+    if text and inbox:
+        open(inbox, "a").write(f"\nDECISION: {text}\n")
 
-handler = (
-    lark.EventDispatcherHandler.builder("", "")     # ("", "") = pure WebSocket: no encrypt/verify token needed
-    .register_p2_im_message_receive_v1(on_message)
-    .build()
-)
-client = lark.ws.Client(
-    os.environ["FEISHU_APP_ID"], os.environ["FEISHU_APP_SECRET"],
-    event_handler=handler, domain=DOMAIN, log_level=lark.LogLevel.INFO,
-)
-client.start()   # blocks; auto-reconnects
+handler = lark.EventDispatcherHandler.builder("", "").register_p2_im_message_receive_v1(on_message).build()
+lark.ws.Client(os.environ["FEISHU_APP_ID"], os.environ["FEISHU_APP_SECRET"],
+               event_handler=handler, domain=DOMAIN, log_level=lark.LogLevel.INFO).start()
 ```
 
-```bash
-pip install lark-oapi
-python feishu_bridge.py     # leave running alongside your experiment
-```
-
-Now the loop is fully async: the run sends a question to Feishu, you **DM the bot your answer from your phone**, the bridge drops it into `feedback_inbox.md`, and `watch_inbox.sh` / the run's checkpoint picks it up — the existing protocol, fed by the bot instead of by hand.
-
-> **First reply wins.** `watch_inbox.sh` reads the *first* `DECISION:` line (`head -1`). Once you've answered, sending a correction won't override it — to change your mind, stop the run (or clear the inbox) and re-ask. A production bridge would key replies to the question's message id and consume the newest.
-
-> **Sending stays separate.** The `lark.ws.Client` above is **receive-only**. Keep sending the outbound question through `feishu-webhook-skill`, or build a *separate* REST client — `lark.Client.builder().app_id(...).app_secret(...).domain(DOMAIN).build()`, then `client.im.v1.message.create(...)`. Either way, **send and receive must use the same self-built app** (and the bot must be in the chat you reply to), or the bridge never sees your reply.
-
----
-
-## How it maps to the grill flow
-
-| Grill step | Mode A | Mode B |
-|---|---|---|
-| Send question | `feishu-webhook-skill` | `feishu-webhook-skill` *or* `im.message.create` |
-| Receive reply | you edit `feedback_inbox.md` | bridge writes it from your chat reply |
-| Detect reply | `watch_inbox.sh` flag | same |
-| No-reply fallback | unchanged (provisional / arena / block) | unchanged |
-
-Mode B changes only the **receive** path, so the fallback honesty (provisional execution, arena escalation, block-on-irreversible) is identical.
+Feishu app setup for this path: create a self-built app at [open.feishu.cn](https://open.feishu.cn/), enable **Bot**, grant `im:message` / `im:message:send_as_bot` / `im:chat` (+ `contact:user.id:readonly` to resolve open_ids), set event subscription to **Long Connection (WebSocket)** and subscribe `im.message.receive_v1`, then **publish a version** (scopes don't take effect until published). In a group the bot only receives `@`-mentions — DM it for the simplest loop.
 
 ## Credits
 
-The bidirectional design here follows two production integrations — read their docs for deeper features (streaming cards, group policies, pairing/allowlists, media):
+The channel-agnostic, delegate-to-the-gateway design follows two production integrations — read their docs for deeper features (streaming cards, group policies, allowlists, media):
 
-- **OpenClaw** — `@larksuiteoapi/node-sdk`, WebSocket default, streaming interactive cards: https://docs.openclaw.ai/zh-CN/channels/feishu
-- **Hermes Agent** — `lark_oapi`, WebSocket default, allowlist + signature handling: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/feishu
+- **Hermes Agent** — multi-channel gateway, `hermes mcp serve`, ACP approval flow: https://hermes-agent.nousresearch.com/docs/user-guide/messaging/feishu
+- **OpenClaw** — `@larksuiteoapi/node-sdk`, WebSocket default, streaming interactive cards: https://docs.openclaw.ai/zh-CN/channels/feishu · https://openclaw.feishu.cn/
+- **larksuite/cli** — official Lark CLI, bidirectional (`im`, `lark-event`): https://github.com/larksuite/cli
