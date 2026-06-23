@@ -85,15 +85,29 @@ When there's no harness to delegate to but you use Feishu, the official **[larks
 
 Install and authenticate per the [repo README](https://github.com/larksuite/cli). Either way, Tier 2 **hands the reply off through the Tier 3 file inbox**: when a reply is seen (by the poll loop or the `lark-event` handler), append a `DECISION:` line to `.agent_runs/<run_id>/feedback_inbox.md` and the existing `watch_inbox.sh` picks it up. So Tier 2 = "reply in chat" on the front, Tier 3 plumbing on the back.
 
-```text
-# Polling (matches the checkpoint cadence):
-at each checkpoint:  lark-cli im <list/read recent messages from your chat>
-                     new user message → append "DECISION: <one-line text>" to feedback_inbox.md
+Worked example (the `auth` and `im +messages-send` forms are from the official README; the read/poll uses the raw Feishu IM list endpoint since the README shows no read shortcut — confirm a shorter `lark-cli im` subcommand with `lark-cli im --help`):
 
-# Or event push (pseudo — see the CLI's lark-event docs for exact route syntax):
-lark-cli lark-event  (subscribe)
-  on im.message.receive_v1:  append "DECISION: <one-line text>" to feedback_inbox.md
+```bash
+# 1. Auth once
+lark-cli auth login --recommend          # interactive (use --no-wait for agent mode); then:
+lark-cli auth status                     # verify
+
+# 2. Send the question to your chat
+lark-cli im +messages-send --as bot --chat-id "oc_xxx" \
+  --text "⚠️ Loss spiked to 2.3 — reduce LR or stop?"
+#  To a user (open_id) instead, use the raw API:
+#  lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"open_id"}' \
+#    --data '{"receive_id":"ou_xxx","msg_type":"text","content":"{\"text\":\"...\"}"}'
+
+# 3. Poll for your reply at each checkpoint (newest first), then write it to the inbox
+lark-cli api GET /open-apis/im/v1/messages \
+  --params '{"container_id_type":"chat","container_id":"oc_xxx","sort_type":"ByCreateTimeDesc","page_size":5}'
+#  → take the newest message authored by YOU (not the bot), collapse to one line, then:
+#    printf 'DECISION: %s\n' "$reply" >> .agent_runs/<run_id>/feedback_inbox.md
+#  watch_inbox.sh then picks it up at the next checkpoint.
 ```
+
+Lower-latency alternative to step 3: the `lark-event` WebSocket subscription (a persistent listener that fires on `im.message.receive_v1` and writes the same `DECISION:` line). Check the CLI's `lark-event` docs for its exact invocation.
 
 This is the preferred standalone Feishu transport — it replaces a custom `lark_oapi` bridge with a maintained CLI, so you don't own the WebSocket client, retries, or auth refresh. Polling is the path that works without a long-running listener; reach for `lark-event` only if you need lower latency than your checkpoint interval.
 
