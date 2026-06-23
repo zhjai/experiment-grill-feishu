@@ -24,7 +24,9 @@ This combines:
 
 ## Initialization (first use in a project) — soft init
 
-On **first use in a project**, check whether `state/experiment-grill-feishu/config.yaml` exists. If it does, **read it and reuse the saved settings** — don't re-ask. If it doesn't, ask the user briefly, then write it (so every later run remembers the choice):
+On **first use in a project**, check whether `state/experiment-grill-feishu/config.yaml` exists. If it does, **read it and reuse the saved settings** — don't re-ask. If it doesn't, ask the user briefly, then write it (so every later run remembers the choice).
+
+> **Where:** `state/experiment-grill-feishu/config.yaml` is **relative to the project working directory** (your repo root / wherever you launch the run — the same place `.agent_runs/` is created), *not* the skill's install directory. It's project-scoped on purpose, so different projects keep different transports/targets. The `state/` dir should be gitignored (it holds workspace identifiers).
 
 1. **Transport** *(always ask — no safe default)*
    "How should I reach you when a decision needs you?

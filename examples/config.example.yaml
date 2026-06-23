@@ -1,6 +1,7 @@
 # experiment-grill-feishu configuration
 # Written on first use (soft init), then reused every run. Project-level, editable any time.
-# Lives at: state/experiment-grill-feishu/config.yaml
+# Lives at: <project working dir>/state/experiment-grill-feishu/config.yaml
+#   (relative to where you run the agent / where .agent_runs/ is — NOT the skill install dir)
 #
 # NO SECRETS HERE. Tokens (FEISHU_APP_SECRET, FEISHU_TENANT_ACCESS_TOKEN) stay in env vars.
 # This file still contains workspace identifiers (chat/open IDs), so decide per project whether
