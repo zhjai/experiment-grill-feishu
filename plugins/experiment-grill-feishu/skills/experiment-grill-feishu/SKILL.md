@@ -102,7 +102,7 @@ Send via whatever `transport.tier` resolved to (see Initialization and [`docs/fe
 - **Tier 1A** (in-loop): just emit the question as your output — the harness relays it.
 - **Tier 1B** (Hermes detached): `messages_send(target, …)`.
 - **Tier 1C** (OpenClaw detached): write the question to the mailbox/inbox the heartbeat turn posts.
-- **Tier 2** (larksuite/cli): `lark-cli im +messages-send …`.
+- **Tier 2** (larksuite/cli): `lark-cli im +messages-send --as bot …`.
 - **Tier 3** (webhook): `feishu-webhook-skill` (requires `FEISHU_TENANT_ACCESS_TOKEN` in env).
 
 Message shape (any transport):
